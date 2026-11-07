@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7a1e2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TARA Simulator">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="robots" content="noindex,noarchive,noimageindex">
+  <meta name="copyright" content="Copyright (C) Ayon Chakraborty, IIT Madras. All rights reserved.">
+  <title>TARA CPU Simulator — CS2300, IIT Madras</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- GOOGLE ANALYTICS TRACKING CODE ------>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-20509414-11"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'UA-20509414-11');
+  </script>
+  <!-- END GOOGLE ANALYTICS TRACKING CODE -->
+</head>
+<body>
+  <main class="app-shell">
+    <section class="left-pane">
+      <section class="panel editor-panel">
+        <div class="brand-row">
+          <img class="brand-icon" src="assets/logo/logo2_cropped.png" alt="TARA logo" draggable="false">
+          <img class="brand-text" src="assets/logo/logo2_text.png" alt="TARA CPU Simulator" draggable="false">
+          <div class="grow"></div>
+          <img class="iitm-logo" src="assets/logo/iitmlogo.png" alt="IIT Madras" draggable="false">
+        </div>
+
+        <div class="editor-toolbar">
+          <select id="programSelect" class="program-select" title="Select bundled or saved program">
+            <option value="">Select Program</option>
+          </select>
+          <button id="openProgramBtn" class="icon-button" title="Load a .tara or .asm assembly file from disk">Open</button>
+          <button id="deleteProgramBtn" class="icon-button danger-soft" title="Delete the current saved program">Delete</button>
+          <button id="openCompilerBtn" class="compiler-button" title="Open the TARA C compiler in a new tab">C</button>
+          <button id="isaBtn" class="isa-button" title="Show TARA instruction set reference">ISA</button>
+          <button id="powerBtn" class="power-button" title="Exit simulator">Power</button>
+          <input id="openFileInput" type="file" accept=".tara,.asm,.s,.txt" hidden>
+        </div>
+
+        <div class="editor-shell">
+          <div id="lineGutter" class="line-gutter" aria-hidden="true"></div>
+          <pre id="syntaxLayer" class="syntax-layer" aria-hidden="true"></pre>
+          <textarea id="sourceEditor" spellcheck="false" wrap="off" placeholder="; Enter TARA assembly here&#10;; Use semicolons for comments&#10;; Labels end with :&#10;&#10;LIL R1, 42&#10;HLT"></textarea>
+          <div class="floating-font-controls">
+            <button id="editorFontDec">A-</button>
+            <button id="editorFontInc">A+</button>
+          </div>
+        </div>
+        <div id="errorBox" class="error-box">Assembly errors will appear here</div>
+      </section>
+
+      <section id="controlPanel" class="panel control-panel">
+        <div class="panel-title-row">
+          <h2>CPU Control</h2>
+          <button id="collapseControls" class="collapse-button">-</button>
+        </div>
+        <div class="control-content">
+          <div class="stats-row">
+            <span class="stat-label">PC</span>
+            <span id="pcValue" class="pc-value">0x0000</span>
+            <span id="instrValue" class="cycle-value">Instructions: 0</span>
+            <span class="cycle-note" title="The simulator counts instructions. On the hardware each instruction takes several clock cycles: a fetch, then the T-states of its own execute steps.">(clock cycles per instruction vary with its T-states)</span>
+            <span id="statusBadge" class="status-badge idle">IDLE</span>
+          </div>
+          <div class="button-row primary-controls">
+            <button id="assembleBtn">Load</button>
+            <button id="stepBackBtn">Back</button>
+            <button id="stepBtn">Step</button>
+            <button id="runBtn">Run</button>
+          </div>
+          <div class="button-row state-controls">
+            <button id="resetBtn">RESET</button>
+            <button id="saveStateBtn">SAVE</button>
+            <button id="bootStateBtn">BOOT</button>
+            <input id="bootStateInput" type="file" accept=".json,application/json" hidden>
+          </div>
+          <div class="clock-row">
+            <label for="freqText">Clock:</label>
+            <input id="freqText" list="freqPresets" value="10 Hz" aria-label="Clock frequency">
+            <datalist id="freqPresets">
+              <option value="1 Hz"></option>
+              <option value="5 Hz"></option>
+              <option value="10 Hz"></option>
+              <option value="25 Hz"></option>
+              <option value="50 Hz"></option>
+              <option value="100 Hz"></option>
+              <option value="500 Hz"></option>
+              <option value="1 kHz"></option>
+              <option value="Max"></option>
+            </datalist>
+            <input id="freqSlider" type="range" min="-10" max="50" value="10" aria-label="Clock slider">
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <div id="mainSplitter" class="main-splitter" role="separator" aria-orientation="vertical" aria-label="Resize code and simulator panels" tabindex="0"></div>
+
+    <section class="right-pane">
+      <section id="registerPanel" class="panel register-panel">
+        <div class="panel-title-row">
+          <h2>TARA16 Register File</h2>
+          <button id="collapseRegisters" class="collapse-button">-</button>
+        </div>
+        <div id="registerGrid" class="register-grid"></div>
+      </section>
+
+      <section class="panel tab-panel">
+        <nav class="tabs" aria-label="Simulator panels">
+          <button class="tab active" data-tab="listing">Machine Code</button>
+          <button class="tab" data-tab="memory">Memory Map</button>
+          <button class="tab" data-tab="display">Display</button>
+          <button class="tab" data-tab="log">Execution Log</button>
+        </nav>
+
+        <section id="tab-listing" class="tab-content active">
+          <div class="panel-subtitle-row">
+            <button id="listingFontDec" class="font-button">A-</button>
+            <button id="listingFontInc" class="font-button">A+</button>
+          </div>
+          <div class="table-wrap listing-wrap">
+            <table id="listingTable" class="listing-table">
+              <thead><tr><th>Addr</th><th>Hex</th><th>Binary</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="tab-memory" class="tab-content">
+          <div class="panel-subtitle-row memory-toolbar">
+            <label>Jump to: <input id="memJump" value="0x000"></label>
+            <button id="memPrevBtn" class="page-button" title="Previous 256 bytes" aria-label="Previous 256 bytes"><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M8 1 L2 5 L8 9 Z" fill="currentColor"/></svg></button>
+            <button id="memNextBtn" class="page-button" title="Next 256 bytes" aria-label="Next 256 bytes"><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M2 1 L8 5 L2 9 Z" fill="currentColor"/></svg></button>
+            <button id="memRadixBtn" class="accent-soft" title="Switch byte values between hexadecimal and decimal">Base: HEX</button>
+            <button id="memToolsBtn" class="accent-soft">Memory Tools</button>
+            <button id="memoryFontDec" class="font-button">A-</button>
+            <button id="memoryFontInc" class="font-button">A+</button>
+          </div>
+          <div class="table-wrap memory-wrap">
+            <table id="memoryTable" class="memory-table"></table>
+          </div>
+        </section>
+
+        <section id="tab-display" class="tab-content">
+          <div class="panel-subtitle-row display-toolbar">
+            <button id="displayGridBtn" class="accent-soft">Grid OFF</button>
+            <label class="color-label">Off <input id="displayOffColor" type="color" value="#1c1c1c"></label>
+            <label class="color-label">On <input id="displayOnColor" type="color" value="#9bc3f8"></label>
+            <button id="displayImportBtn">Import Image</button>
+            <button id="displayClearBtn" class="danger-soft">Clear</button>
+            <input id="displayImportInput" type="file" accept="image/png,image/jpeg,image/bmp,image/gif,image/webp" hidden>
+          </div>
+          <p id="displayInfo" class="panel-hint">64x64 pixels at 0x0600-0x07FF. 1 bit/pixel. Keyboard arrows/WASD or phone game buttons write to 0x05FF.</p>
+          <div id="displayStage" class="display-stage">
+            <button id="displayExpandBtn" type="button" class="display-expand-btn" title="Fill panel horizontally" aria-label="Fill panel horizontally"></button>
+            <div id="displayCoord" class="display-coord" aria-hidden="true" hidden></div>
+            <canvas id="displayCanvas" class="display-canvas" width="64" height="64" tabindex="0" aria-label="TARA memory mapped display"></canvas>
+            <section class="game-input-panel" aria-label="Game input buttons">
+              <div class="game-input-strip" role="group" aria-label="Direction controls">
+                <button type="button" class="gamepad-button dpad-left" data-key-bit="4" aria-label="Left">Left</button>
+                <button type="button" class="gamepad-button dpad-up" data-key-bit="1" aria-label="Up">Up</button>
+                <button type="button" class="gamepad-button dpad-down" data-key-bit="2" aria-label="Down">Down</button>
+                <button type="button" class="gamepad-button dpad-right" data-key-bit="8" aria-label="Right">Right</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tab-log" class="tab-content">
+          <div class="panel-subtitle-row">
+            <button id="clearLogBtn">Clear</button>
+            <button id="logFontDec" class="font-button">A-</button>
+            <button id="logFontInc" class="font-button">A+</button>
+          </div>
+          <pre id="executionLog" class="execution-log"></pre>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <footer class="status-bar">
+    <span id="statusText">Ready.</span>
+    <span>Copyright (C) Ayon Chakraborty, IIT Madras. All rights reserved.</span>
+  </footer>
+
+  <dialog id="isaDialog" class="modal isa-modal">
+    <div class="modal-header">
+      <h2>TARA ISA Reference</h2>
+      <div class="grow"></div>
+      <button id="isaFontDec" class="font-button">A-</button>
+      <button id="isaFontInc" class="font-button">A+</button>
+      <button id="isaCloseBtn">Close</button>
+    </div>
+    <p class="panel-hint">16-bit fixed-width instructions | 5-bit opcode | R0-R7 | byte-addressed memory</p>
+    <div class="table-wrap isa-wrap">
+      <table id="isaTable" class="isa-table">
+        <thead><tr><th>Group</th><th>INST</th><th>Opcode</th><th>Format</th><th>Syntax</th><th>Effect</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </dialog>
+
+  <dialog id="powerDialog" class="modal power-modal">
+    <div class="modal-header">
+      <h2>Power Off</h2>
+    </div>
+    <p class="power-question">Save machine state before exiting?</p>
+    <div class="power-actions">
+      <button id="powerYesBtn" class="power-yes">Yes</button>
+      <button id="powerNoBtn" class="power-no">No</button>
+    </div>
+  </dialog>
+
+  <dialog id="memoryToolsDialog" class="modal memory-modal">
+    <div class="modal-header">
+      <h2>Memory Tools</h2>
+      <div class="grow"></div>
+      <button id="memoryToolsCloseBtn">Close</button>
+    </div>
+    <div class="tools-grid">
+      <section>
+        <h3>Random Fill</h3>
+        <label>Start <input id="randomStart" value="0x0400"></label>
+        <label>Count <input id="randomCount" value="256"></label>
+        <label>Min <input id="randomMin" value="0"></label>
+        <label>Max <input id="randomMax" value="255"></label>
+        <button id="randomFillBtn">Apply Random Fill</button>
+      </section>
+      <section>
+        <h3>Import CSV / Bytes</h3>
+        <label>Start <input id="importStart" value="0x0400"></label>
+        <input id="memoryImportInput" type="file" accept=".csv,.txt">
+        <button id="memoryImportBtn">Import</button>
+        <p class="panel-hint">Accepts comma, whitespace, hex, binary, or decimal byte values.</p>
+      </section>
+      <section>
+        <h3>Export CSV</h3>
+        <label>Start <input id="exportStart" value="0x0000"></label>
+        <label>Count <input id="exportCount" value="2048"></label>
+        <label><input id="exportIncludeZeros" type="checkbox" checked> Include zeros</label>
+        <button id="memoryExportBtn">Export CSV</button>
+      </section>
+      <section>
+        <h3>Heatmap</h3>
+        <label><input id="heatmapToggle" type="checkbox" checked> Enable byte heatmap</label>
+        <p class="panel-hint">Uses TARA Studio's colour map: creme for 0x00, maroon for 0xFF.</p>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="examples.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
