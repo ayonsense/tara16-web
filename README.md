@@ -42,21 +42,6 @@ Programs saved in the interface are stored in the browser's local storage.
 Machine-state snapshots and memory data can also be imported or exported as
 local files.
 
-## Repository layout
-
-```text
-index.html          application shell and dialogs
-style.css           responsive desktop and mobile interface
-app.js              assembler, emulator, display, and UI logic
-examples.js         bundled TARA16 assembly programs
-assets/logo/        runtime branding used by the interface
-.htaccess           Apache security and cache headers
-_headers            equivalent headers for static hosting platforms
-```
-
-The frontend uses standard HTML, CSS, and JavaScript with no framework or
-package-manager dependencies.
-
 ## Related resources
 
 - [TARA Studio](https://github.com/ayonsense/tara16-studio) — installable
