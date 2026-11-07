@@ -194,8 +194,15 @@ function parseOperands(opsStr, mnem) {
   return operands;
 }
 
+function validateRange(value, minimum, maximum, operandName) {
+  if (!(minimum <= value && value <= maximum)) {
+    throw new AsmError(`${operandName} must be between ${minimum} and ${maximum}, got ${value}`);
+  }
+  return value;
+}
+
 function labelRel(target, iaddr, labelMap) {
-  if (hasOwn(labelMap, target)) return Math.trunc((labelMap[target] - (iaddr + 2)) / 2);
+  if (hasOwn(labelMap, target)) return Math.floor((labelMap[target] - (iaddr + 2)) / 2);
   return parseIntToken(target, labelMap);
 }
 
@@ -262,19 +269,29 @@ function assemble(source) {
       } else if (["MOV", "NOT"].indexOf(mnem) >= 0) {
         word = encodeF2(opcode, parseReg(operands[0]), parseReg(operands[1]));
       } else if (["LIL", "LIH", "ADDI"].indexOf(mnem) >= 0) {
-        word = encodeF3(opcode, parseReg(operands[0]), parseIntToken(operands[1], labelMap));
+        const rd = parseReg(operands[0]);
+        let imm = parseIntToken(operands[1], labelMap);
+        if (mnem === "ADDI") imm = validateRange(imm, -128, 127, "ADDI immediate");
+        else imm = validateRange(imm, -128, 255, `${mnem} immediate`);
+        word = encodeF3(opcode, rd, imm);
       } else if (["SHL", "SHR"].indexOf(mnem) >= 0) {
-        word = encodeF3(opcode, parseReg(operands[0]), parseIntToken(operands[1], labelMap));
-      } else if (["LDW", "LDB"].indexOf(mnem) >= 0) {
+        const rd = parseReg(operands[0]);
+        const shamt = validateRange(parseIntToken(operands[1], labelMap), 0, 31, "shift amount");
+        word = encodeF3(opcode, rd, shamt);
+      } else if (["LDW", "LDB", "STW", "STB"].indexOf(mnem) >= 0) {
+        // LDW/LDB Rd, off(Rb) and STW/STB Rs, off(Rb)
+        const rdata = parseReg(operands[0]);
         const mem = parseMem(operands[1]);
-        word = encodeF4(opcode, parseReg(operands[0]), parseReg(mem[1]), parseIntToken(mem[0], labelMap));
-      } else if (["STW", "STB"].indexOf(mnem) >= 0) {
-        const mem = parseMem(operands[1]);
-        word = encodeF4(opcode, parseReg(operands[0]), parseReg(mem[1]), parseIntToken(mem[0], labelMap));
+        const off = validateRange(parseIntToken(mem[0], labelMap), -16, 15, "memory offset");
+        const rbase = parseReg(mem[1]);
+        word = encodeF4(opcode, rdata, rbase, off);
       } else if (["BZ", "BN"].indexOf(mnem) >= 0) {
-        word = encodeF5(opcode, parseReg(operands[0]), labelRel(operands[1], iaddr, labelMap));
+        const rtest = parseReg(operands[0]);
+        const rel = validateRange(labelRel(operands[1], iaddr, labelMap), -128, 127, "branch offset");
+        word = encodeF5(opcode, rtest, rel);
       } else if (["JMP", "CALL"].indexOf(mnem) >= 0) {
-        word = encodeF6(opcode, labelRel(operands[0], iaddr, labelMap));
+        const rel = validateRange(labelRel(operands[0], iaddr, labelMap), -1024, 1023, "jump offset");
+        word = encodeF6(opcode, rel);
       } else if (["PUSH", "POP"].indexOf(mnem) >= 0) {
         word = encodeF7(opcode, parseReg(operands[0]));
       } else {
